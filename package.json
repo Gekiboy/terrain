@@ -1,0 +1,23 @@
+{
+  "name": "terrain",
+  "version": "1.0.0",
+  "description": "Fantasy map generator",
+  "main": "index.js",
+  "repository": "git@github.com:Gekiboy/terrain.git",
+  "author": "Greg Field <mr.greg.field@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w"
+  },
+  "dependencies": {
+    "d3": "^4.8.0",
+    "js-priority-queue": "^0.1.5"
+  },
+  "devDependencies": {
+    "rollup": "^0.41.6",
+    "rollup-plugin-commonjs": "^8.0.2",
+    "rollup-plugin-node-resolve": "^3.0.0",
+    "rollup-watch": "^3.2.2"
+  }
+}
