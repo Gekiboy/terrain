@@ -8233,8 +8233,8 @@ function generateGoodMesh(n) {
     var aspectRatio = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : defaultAspectRatio;
 
     var pts = generateGoodPoints(n, aspectRatio);
-    var w = this.aspectRatio.width / 2;
-    var h = this.aspectRatio.height / 2;
+    var w = aspectRatio.width / 2;
+    var h = aspectRatio.height / 2;
 
     var viewArea = {
         left: -w,

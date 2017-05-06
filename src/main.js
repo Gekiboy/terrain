@@ -64,8 +64,8 @@ export function generateGoodPoints(n, aspectRatio=defaultAspectRatio) {
 
 function generateGoodMesh(n, aspectRatio=defaultAspectRatio) {
     const pts = generateGoodPoints(n, aspectRatio);
-    const w = this.aspectRatio.width / 2;
-    const h = this.aspectRatio.height / 2;
+    const w = aspectRatio.width / 2;
+    const h = aspectRatio.height / 2;
 
     const viewArea = {
         left: -w,
