@@ -1,8 +1,8 @@
 import * as d3 from 'd3';
-import { PriorityQueue } from 'js-priority-queue';
 import { defaultAspectRatio, runif, voronoi } from './helpers';
 import Map from './Map';
 import Mesh from './Mesh';
+const PriorityQueue = require('js-priority-queue');
 
 const rnorm = ((() => {
     let z2 = null;
