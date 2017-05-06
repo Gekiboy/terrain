@@ -12,7 +12,7 @@ export function runif(lo, hi) {
 export function voronoi(pts, aspectRatio = defaultAspectRatio) {
     const w = aspectRatio.width/2;
     const h = aspectRatio.height/2;
-    return d3.voronoi().aspectRatio([[-w, -h], [w, h]])(pts);
+    return d3.voronoi().extent([[-w, -h], [w, h]])(pts);
 }
 
 export function getRandomNormal() {

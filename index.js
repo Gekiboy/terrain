@@ -8007,7 +8007,7 @@ function voronoi$1(pts) {
 
     var w = aspectRatio.width / 2;
     var h = aspectRatio.height / 2;
-    return voronoi().aspectRatio([[-w, -h], [w, h]])(pts);
+    return voronoi().extent([[-w, -h], [w, h]])(pts);
 }
 
 var X_POS = 0;
