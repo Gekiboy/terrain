@@ -8107,7 +8107,7 @@ var Map$1 = function () {
             viewArea || (viewArea = this.getViewArea());
             var points = this.generatePoints(viewArea);
 
-            this.mesh = Mesh(points, viewArea);
+            this.mesh = new Mesh(points, viewArea);
         }
     }, {
         key: 'generateBasicShape',
@@ -8243,7 +8243,7 @@ function generateGoodMesh(n) {
         bottom: -h
     };
 
-    return Mesh(pts, viewArea);
+    return new Mesh(pts, viewArea);
 }
 function isedge(mesh, i) {
     return mesh.adjacencyIndex[i].length < 3;

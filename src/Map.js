@@ -16,7 +16,7 @@ export default class Map {
         viewArea || (viewArea = this.getViewArea());
         const points = this.generatePoints(viewArea);
 
-        this.mesh = Mesh(points, viewArea);
+        this.mesh = new Mesh(points, viewArea);
     }
 
     generateBasicShape() {

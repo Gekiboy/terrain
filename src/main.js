@@ -74,7 +74,7 @@ function generateGoodMesh(n, aspectRatio=defaultAspectRatio) {
         bottom: -h
     }
 
-    return Mesh(pts, viewArea);
+    return new Mesh(pts, viewArea);
 }
 function isedge(mesh, i) {
     return (mesh.adjacencyIndex[i].length < 3);
