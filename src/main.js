@@ -961,7 +961,7 @@ function drawMap(svg, render) {
     drawLabels(svg, render);
 }
 
-export function doMap(svg, params) {
+export function doMap(svg, params = defaultParams) {
     const render = {
         params
     };

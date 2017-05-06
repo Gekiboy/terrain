@@ -213,6 +213,26 @@ var max = function (values, valueof) {
   return max;
 };
 
+var mean = function (values, valueof) {
+  var n = values.length,
+      m = n,
+      i = -1,
+      value,
+      sum = 0;
+
+  if (valueof == null) {
+    while (++i < n) {
+      if (!isNaN(value = number(values[i]))) sum += value;else --m;
+    }
+  } else {
+    while (++i < n) {
+      if (!isNaN(value = number(valueof(values[i], i, values)))) sum += value;else --m;
+    }
+  }
+
+  if (m) return sum / m;
+};
+
 var merge = function (arrays) {
   var n = arrays.length,
       m,
@@ -8209,6 +8229,22 @@ function generateGoodPoints(n) {
     return improvePoints(pts, 1, aspectRatio);
 }
 
+function generateGoodMesh(n) {
+    var aspectRatio = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : defaultAspectRatio;
+
+    var pts = generateGoodPoints(n, aspectRatio);
+    var w = this.aspectRatio.width / 2;
+    var h = this.aspectRatio.height / 2;
+
+    var viewArea = {
+        left: -w,
+        right: w,
+        top: h,
+        bottom: -h
+    };
+
+    return Mesh(pts, viewArea);
+}
 function isedge(mesh, i) {
     return mesh.adjacencyIndex[i].length < 3;
 }
@@ -8236,6 +8272,15 @@ function distance(mesh, i, j) {
     return Math.sqrt((p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1]));
 }
 
+function quantile$$1(h, q) {
+    var sortedh = [];
+    for (var i = 0; i < h.length; i++) {
+        sortedh[i] = h[i];
+    }
+    sortedh.sort(ascending);
+    return threshold(sortedh, q);
+}
+
 function zero(mesh) {
     var z = [];
     for (var i = 0; i < mesh.vertices.length; i++) {
@@ -8245,9 +8290,77 @@ function zero(mesh) {
     return z;
 }
 
+function slope(mesh, direction) {
+    return mesh.map(function (x) {
+        return x[0] * direction[0] + x[1] * direction[1];
+    });
+}
+
+function cone(mesh, slope) {
+    return mesh.map(function (x) {
+        return Math.pow(x[0] * x[0] + x[1] * x[1], 0.5) * slope;
+    });
+}
+
 function map$$1(h, f) {
     var newh = h.map(f);
     newh.mesh = h.mesh;
+    return newh;
+}
+
+function normalize(h) {
+    var lo = min(h);
+    var hi = max(h);
+    return map$$1(h, function (x) {
+        return (x - lo) / (hi - lo);
+    });
+}
+
+function peaky(h) {
+    return map$$1(normalize(h), Math.sqrt);
+}
+
+function add() {
+    var n = arguments[0].length;
+    var newvals = zero(arguments[0].mesh);
+    for (var i = 0; i < n; i++) {
+        for (var j = 0; j < arguments.length; j++) {
+            newvals[i] += arguments[j][i];
+        }
+    }
+    return newvals;
+}
+
+function mountains(mesh, n) {
+    var r = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0.05;
+
+    var mounts = [];
+    for (var i = 0; i < n; i++) {
+        mounts.push([mesh.aspectRatio.width * (Math.random() - 0.5), mesh.aspectRatio.height * (Math.random() - 0.5)]);
+    }
+    var newvals = zero(mesh);
+    for (var i = 0; i < mesh.vertices.length; i++) {
+        var p = mesh.vertices[i];
+        for (var j = 0; j < n; j++) {
+            var m = mounts[j];
+            newvals[i] += Math.pow(Math.exp(-((p[0] - m[0]) * (p[0] - m[0]) + (p[1] - m[1]) * (p[1] - m[1])) / (2 * r * r)), 2);
+        }
+    }
+    return newvals;
+}
+
+function relax(h) {
+    var newh = zero(h.mesh);
+    for (var i = 0; i < h.length; i++) {
+        var nbs = neighbours(h.mesh, i);
+        if (nbs.length < 3) {
+            newh[i] = 0;
+            continue;
+        }
+        newh[i] = mean(nbs.map(function (j) {
+            return h[j];
+        }));
+    }
     return newh;
 }
 
@@ -8274,6 +8387,40 @@ function downhill(h) {
     return downs;
 }
 
+function fillSinks(h) {
+    var epsilon = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 1e-5;
+
+    var infinity = 999999;
+    var newh = zero(h.mesh);
+    for (var i = 0; i < h.length; i++) {
+        if (isnearedge(h.mesh, i)) {
+            newh[i] = h[i];
+        } else {
+            newh[i] = infinity;
+        }
+    }
+    while (true) {
+        var changed = false;
+        for (var i = 0; i < h.length; i++) {
+            if (newh[i] == h[i]) continue;
+            var nbs = neighbours(h.mesh, i);
+            for (var j = 0; j < nbs.length; j++) {
+                if (h[i] >= newh[nbs[j]] + epsilon) {
+                    newh[i] = h[i];
+                    changed = true;
+                    break;
+                }
+                var oh = newh[nbs[j]] + epsilon;
+                if (newh[i] > oh && oh > h[i]) {
+                    newh[i] = oh;
+                    changed = true;
+                }
+            }
+        }
+        if (!changed) return newh;
+    }
+}
+
 function getFlux(h) {
     var dh = downhill(h);
     var idxs = [];
@@ -8292,6 +8439,111 @@ function getFlux(h) {
         }
     }
     return flux;
+}
+
+function getSlope(h) {
+    var dh = downhill(h);
+    var slope = zero(h.mesh);
+    for (var i = 0; i < h.length; i++) {
+        var s = trislope(h, i);
+        slope[i] = Math.sqrt(s[0] * s[0] + s[1] * s[1]);
+        continue;
+        if (dh[i] < 0) {
+            slope[i] = 0;
+        } else {
+            slope[i] = (h[i] - h[dh[i]]) / distance(h.mesh, i, dh[i]);
+        }
+    }
+    return slope;
+}
+
+function erosionRate(h) {
+    var flux = getFlux(h);
+    var slope = getSlope(h);
+    var newh = zero(h.mesh);
+    for (var i = 0; i < h.length; i++) {
+        var river = Math.sqrt(flux[i]) * slope[i];
+        var creep = slope[i] * slope[i];
+        var total = 1000 * river + creep;
+        total = total > 200 ? 200 : total;
+        newh[i] = total;
+    }
+    return newh;
+}
+
+function erode(h, amount) {
+    var er = erosionRate(h);
+    var newh = zero(h.mesh);
+    var maxr = max(er);
+    for (var i = 0; i < h.length; i++) {
+        newh[i] = h[i] - amount * (er[i] / maxr);
+    }
+    return newh;
+}
+
+function doErosion(h, amount) {
+    var n = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 1;
+
+    h = fillSinks(h);
+    for (var i = 0; i < n; i++) {
+        h = erode(h, amount);
+        h = fillSinks(h);
+    }
+    return h;
+}
+
+function setSeaLevel(h, q) {
+    var newh = zero(h.mesh);
+    var delta = quantile$$1(h, q);
+    for (var i = 0; i < h.length; i++) {
+        newh[i] = h[i] - delta;
+    }
+    return newh;
+}
+
+function cleanCoast(h, iters) {
+    for (var iter = 0; iter < iters; iter++) {
+        var changed = 0;
+        var newh = zero(h.mesh);
+        for (var i = 0; i < h.length; i++) {
+            newh[i] = h[i];
+            var nbs = neighbours(h.mesh, i);
+            if (h[i] <= 0 || nbs.length != 3) continue;
+            var count = 0;
+            var best = -999999;
+            for (var j = 0; j < nbs.length; j++) {
+                if (h[nbs[j]] > 0) {
+                    count++;
+                } else if (h[nbs[j]] > best) {
+                    best = h[nbs[j]];
+                }
+            }
+            if (count > 1) continue;
+            newh[i] = best / 2;
+            changed++;
+        }
+        h = newh;
+        newh = zero(h.mesh);
+        for (var i = 0; i < h.length; i++) {
+            newh[i] = h[i];
+            var nbs = neighbours(h.mesh, i);
+            if (h[i] > 0 || nbs.length != 3) continue;
+            var count = 0;
+            var best = 999999;
+            for (var j = 0; j < nbs.length; j++) {
+                if (h[nbs[j]] <= 0) {
+                    count++;
+                } else if (h[nbs[j]] < best) {
+                    best = h[nbs[j]];
+                }
+            }
+            if (count > 1) continue;
+            newh[i] = best / 2;
+            changed++;
+        }
+        h = newh;
+    }
+    return h;
 }
 
 function trislope(h, i) {
@@ -8661,6 +8913,24 @@ function visualizeCities(svg, render) {
     }).style('fill', 'white').style('stroke-width', 5).style('stroke-linecap', 'round').style('stroke', 'black').raise();
 }
 
+function randomVector(scale) {
+    return [scale * rnorm(), scale * rnorm()];
+}
+
+function generateCoast(params) {
+    var mesh = generateGoodMesh(params.npts, params.aspectRatio);
+    var h = add(slope(mesh, randomVector(4)), cone(mesh, runif$1(-1, 1)), mountains(mesh, 50));
+    for (var i = 0; i < 10; i++) {
+        h = relax(h);
+    }
+    h = peaky(h);
+    h = doErosion(h, runif$1(0, 0.1), 5);
+    h = setSeaLevel(h, runif$1(0.2, 0.6));
+    h = fillSinks(h);
+    h = cleanCoast(h, 3);
+    return h;
+}
+
 function terrCenter(h, terr, city, landOnly) {
     var x = 0;
     var y = 0;
@@ -8895,7 +9165,9 @@ function drawMap(svg, render) {
     drawLabels(svg, render);
 }
 
-function doMap(svg, params) {
+function doMap(svg) {
+    var params = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : defaultParams;
+
     var render = {
         params: params
     };
@@ -8907,6 +9179,19 @@ function doMap(svg, params) {
     placeCities(render);
     drawMap(svg, render);
 }
+
+var defaultParams = {
+    aspectRatio: defaultAspectRatio,
+    generator: generateCoast,
+    numPoints: 16384,
+    ncities: 15,
+    nterrs: 5,
+    fontsizes: {
+        region: 40,
+        city: 25,
+        town: 20
+    }
+};
 
 exports.generatePoints = generatePoints;
 exports.improvePoints = improvePoints;
