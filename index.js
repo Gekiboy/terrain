@@ -8421,7 +8421,7 @@ function getTerritories(render) {
         var horiz = distance(h.mesh, u, v);
         var vert = h[v] - h[u];
         if (vert > 0) vert /= 10;
-        var diff = 1 + 0.25 * (vert / horiz ** 2);
+        var diff = 1 + 0.25 * (vert / Math.pow(horiz, 2));
         diff += 100 * Math.sqrt(flux[u]);
         if (h[u] <= 0) diff = 100;
         if (h[u] > 0 != h[v] > 0) return 1000;
@@ -8614,7 +8614,7 @@ function visualizeSlopes(svg, render) {
         s /= nbs.length;
         s2 /= nbs.length;
         if (Math.abs(s) < runif$1(0.1, 0.4)) continue;
-        var l = r * runif$1(1, 2) * (1 - 0.2 * Math.atan(s) ** 2) * Math.exp(s2 / 100);
+        var l = r * runif$1(1, 2) * (1 - 0.2 * Math.pow(Math.atan(s), 2)) * Math.exp(s2 / 100);
         var x = h.mesh.vertices[i][0];
         var y = h.mesh.vertices[i][1];
         if (Math.abs(l * s) > 2 * r) {
