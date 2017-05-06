@@ -1,6 +1,7 @@
 import * as d3 from 'd3';
 import { PriorityQueue } from 'js-priority-queue';
-import { defaultExtent, runif, voronoi } from './helpers';
+import { defaultAspectRatio, runif, voronoi } from './helpers';
+import Map from './Map';
 import Mesh from './Mesh';
 
 const rnorm = ((() => {
@@ -26,10 +27,10 @@ const rnorm = ((() => {
     return rnorm;
 }))();
 
-export function generatePoints(n, extent=defaultExtent) {
+export function generatePoints(n, aspectRatio=defaultAspectRatio) {
     const pts = [];
-    const w = extent.width/2;
-    const h = extent.height/2;
+    const w = aspectRatio.width/2;
+    const h = aspectRatio.height/2;
     for (let i = 0; i < n; i++) {
         pts.push([runif(-w, w), runif(-h, h)]);
     }
@@ -46,39 +47,49 @@ function centroid(pts) {
     return [x/pts.length, y/pts.length];
 }
 
-export function improvePoints(pts, n=1, extent=defaultExtent) {
+export function improvePoints(pts, n=1, aspectRatio=defaultAspectRatio) {
     for (let i = 0; i < n; i++) {
-        pts = voronoi(pts, extent)
+        pts = voronoi(pts, aspectRatio)
             .polygons(pts)
             .map(centroid);
     }
     return pts;
 }
 
-export function generateGoodPoints(n, extent=defaultExtent) {
-    let pts = generatePoints(n, extent);
+export function generateGoodPoints(n, aspectRatio=defaultAspectRatio) {
+    let pts = generatePoints(n, aspectRatio);
     pts = pts.sort((a, b) => a[0] - b[0]);
-    return improvePoints(pts, 1, extent);
+    return improvePoints(pts, 1, aspectRatio);
 }
 
-function generateGoodMesh(n, extent=defaultExtent) {
-    const pts = generateGoodPoints(n, extent);
-    return Mesh(pts, extent);
+function generateGoodMesh(n, aspectRatio=defaultAspectRatio) {
+    const pts = generateGoodPoints(n, aspectRatio);
+    const w = this.aspectRatio.width / 2;
+    const h = this.aspectRatio.height / 2;
+
+    const viewArea = {
+        left: -w,
+        right: w,
+        top: h,
+        bottom: -h
+    }
+
+    return Mesh(pts, viewArea);
 }
 function isedge(mesh, i) {
-    return (mesh.adj[i].length < 3);
+    return (mesh.adjacencyIndex[i].length < 3);
 }
 
 function isnearedge(mesh, i) {
-    const x = mesh.vxs[i][0];
-    const y = mesh.vxs[i][1];
-    const w = mesh.extent.width;
-    const h = mesh.extent.height;
+    const x = mesh.vertices[i][0];
+    const y = mesh.vertices[i][1];
+    const w = mesh.aspectRatio.width;
+    const h = mesh.aspectRatio.height;
     return x < -0.45 * w || x > 0.45 * w || y < -0.45 * h || y > 0.45 * h;
 }
 
 function neighbours(mesh, i) {
-    const onbs = mesh.adj[i];
+    const onbs = mesh.adjacencyIndex[i];
     const nbs = [];
     for (var i = 0; i < onbs.length; i++) {
         nbs.push(onbs[i]);
@@ -87,8 +98,8 @@ function neighbours(mesh, i) {
 }
 
 function distance(mesh, i, j) {
-    const p = mesh.vxs[i];
-    const q = mesh.vxs[j];
+    const p = mesh.vertices[i];
+    const q = mesh.vertices[j];
     return Math.sqrt((p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1]));
 }
 
@@ -103,7 +114,7 @@ function quantile(h, q) {
 
 function zero(mesh) {
     const z = [];
-    for (let i = 0; i < mesh.vxs.length; i++) {
+    for (let i = 0; i < mesh.vertices.length; i++) {
         z[i] = 0;
     }
     z.mesh = mesh;
@@ -148,11 +159,11 @@ function add() {
 function mountains(mesh, n, r=0.05) {
     const mounts = [];
     for (var i = 0; i < n; i++) {
-        mounts.push([mesh.extent.width * (Math.random() - 0.5), mesh.extent.height * (Math.random() - 0.5)]);
+        mounts.push([mesh.aspectRatio.width * (Math.random() - 0.5), mesh.aspectRatio.height * (Math.random() - 0.5)]);
     }
     const newvals = zero(mesh);
-    for (var i = 0; i < mesh.vxs.length; i++) {
-        const p = mesh.vxs[i];
+    for (var i = 0; i < mesh.vertices.length; i++) {
+        const p = mesh.vertices[i];
         for (let j = 0; j < n; j++) {
             const m = mounts[j];
             newvals[i] += Math.exp(-((p[0] - m[0]) * (p[0] - m[0]) + (p[1] - m[1]) * (p[1] - m[1])) / (2 * r * r)) ** 2;
@@ -372,9 +383,9 @@ function cleanCoast(h, iters) {
 function trislope(h, i) {
     const nbs = neighbours(h.mesh, i);
     if (nbs.length != 3) return [0,0];
-    const p0 = h.mesh.vxs[nbs[0]];
-    const p1 = h.mesh.vxs[nbs[1]];
-    const p2 = h.mesh.vxs[nbs[2]];
+    const p0 = h.mesh.vertices[nbs[0]];
+    const p1 = h.mesh.vertices[nbs[1]];
+    const p2 = h.mesh.vertices[nbs[2]];
 
     const x1 = p1[0] - p0[0];
     const x2 = p2[0] - p0[0];
@@ -396,8 +407,8 @@ function cityScore(h, cities) {
             score[i] = -999999;
             continue;
         }
-        score[i] += 0.01 / (1e-9 + Math.abs(h.mesh.vxs[i][0]) - h.mesh.extent.width/2)
-        score[i] += 0.01 / (1e-9 + Math.abs(h.mesh.vxs[i][1]) - h.mesh.extent.height/2)
+        score[i] += 0.01 / (1e-9 + Math.abs(h.mesh.vertices[i][0]) - h.mesh.aspectRatio.width/2)
+        score[i] += 0.01 / (1e-9 + Math.abs(h.mesh.vertices[i][1]) - h.mesh.aspectRatio.height/2)
         for (let j = 0; j < cities.length; j++) {
             score[i] -= 0.02 / (distance(h.mesh, cities[j], i) + 1e-9);
         }
@@ -447,8 +458,8 @@ function getRivers(h, limit) {
     for (var i = 0; i < dh.length; i++) {
         if (isnearedge(h.mesh, i)) continue;
         if (flux[i] > limit && h[i] > 0 && dh[i] >= 0) {
-            const up = h.mesh.vxs[i];
-            const down = h.mesh.vxs[dh[i]];
+            const up = h.mesh.vertices[i];
+            const down = h.mesh.vertices[dh[i]];
             if (h[dh[i]] > 0) {
                 links.push([up, down]);
             } else {
@@ -651,8 +662,8 @@ function visualizeSlopes(svg, render) {
         s2 /= nbs.length;
         if (Math.abs(s) < runif(0.1, 0.4)) continue;
         let l = r * runif(1, 2) * (1 - 0.2 * (Math.atan(s) ** 2)) * Math.exp(s2/100);
-        const x = h.mesh.vxs[i][0];
-        const y = h.mesh.vxs[i][1];
+        const x = h.mesh.vertices[i][0];
+        const y = h.mesh.vertices[i][1];
         if (Math.abs(l*s) > 2 * r) {
             let n = Math.floor(Math.abs(l*s/r));
             l /= n;
@@ -703,8 +714,8 @@ function visualizeCities(svg, render) {
     circs.exit()
             .remove();
     svg.selectAll('circle.city')
-        .attr('cx', d => 1000*h.mesh.vxs[d][0])
-        .attr('cy', d => 1000*h.mesh.vxs[d][1])
+        .attr('cx', d => 1000*h.mesh.vertices[d][0])
+        .attr('cy', d => 1000*h.mesh.vertices[d][1])
         .attr('r', (d, i) => i >= n ? 4 : 10)
         .style('fill', 'white')
         .style('stroke-width', 5)
@@ -716,9 +727,9 @@ function visualizeCities(svg, render) {
 function dropEdge(h, p=4) {
     const newh = zero(h.mesh);
     for (let i = 0; i < h.length; i++) {
-        const v = h.mesh.vxs[i];
-        const x = 2.4*v[0] / h.mesh.extent.width;
-        const y = 2.4*v[1] / h.mesh.extent.height;
+        const v = h.mesh.vertices[i];
+        const x = 2.4*v[0] / h.mesh.aspectRatio.width;
+        const y = 2.4*v[1] / h.mesh.aspectRatio.height;
         newh[i] = h[i] - Math.exp(10*((x ** p + y ** p) ** (1 / p) - 1));
     }
     return newh;
@@ -729,7 +740,7 @@ function randomVector(scale) {
 }
 
 function generateCoast(params) {
-    const mesh = generateGoodMesh(params.npts, params.extent);
+    const mesh = generateGoodMesh(params.npts, params.aspectRatio);
     let h = add(
             slope(mesh, randomVector(4)),
             cone(mesh, runif(-1, 1)),
@@ -753,8 +764,8 @@ function terrCenter(h, terr, city, landOnly) {
     for (let i = 0; i < terr.length; i++) {
         if (terr[i] != city) continue;
         if (landOnly && h[i] <= 0) continue;
-        x += terr.mesh.vxs[i][0];
-        y += terr.mesh.vxs[i][1];
+        x += terr.mesh.vertices[i][0];
+        y += terr.mesh.vertices[i][1];
         n++;
     }
     return [x/n, y/n];
@@ -771,10 +782,10 @@ function drawLabels(svg, render) {
     const citylabels = [];
     function penalty(label) {
         let pen = 0;
-        if (label.x0 < -0.45 * h.mesh.extent.width) pen += 100;
-        if (label.x1 > 0.45 * h.mesh.extent.width) pen += 100;
-        if (label.y0 < -0.45 * h.mesh.extent.height) pen += 100;
-        if (label.y1 > 0.45 * h.mesh.extent.height) pen += 100;
+        if (label.x0 < -0.45 * h.mesh.aspectRatio.width) pen += 100;
+        if (label.x1 > 0.45 * h.mesh.aspectRatio.width) pen += 100;
+        if (label.y0 < -0.45 * h.mesh.aspectRatio.height) pen += 100;
+        if (label.y1 > 0.45 * h.mesh.aspectRatio.height) pen += 100;
         for (var i = 0; i < citylabels.length; i++) {
             const olabel = citylabels[i];
             if (label.x0 < olabel.x1 && label.x1 > olabel.x0 &&
@@ -784,7 +795,7 @@ function drawLabels(svg, render) {
         }
 
         for (var i = 0; i < cities.length; i++) {
-            const c = h.mesh.vxs[cities[i]];
+            const c = h.mesh.vertices[cities[i]];
             if (label.x0 < c[0] && label.x1 > c[0] && label.y0 < c[1] && label.y1 > c[1]) {
                 pen += 100;
             }
@@ -803,8 +814,8 @@ function drawLabels(svg, render) {
         return pen;
     }
     for (var i = 0; i < cities.length; i++) {
-        const x = h.mesh.vxs[cities[i]][0];
-        const y = h.mesh.vxs[cities[i]][1];
+        const x = h.mesh.vertices[cities[i]][0];
+        const y = h.mesh.vertices[cities[i]][1];
         var text = makeName(lang, 'city');
         const size = i < nterrs ? params.fontsizes.city : params.fontsizes.town;
         var sx = 0.65 * size/1000 * text.length;
@@ -878,12 +889,12 @@ function drawLabels(svg, render) {
         let bestscore = -999999;
         for (let j = 0; j < h.length; j++) {
             let score = 0;
-            const v = h.mesh.vxs[j];
+            const v = h.mesh.vertices[j];
             score -= 3000 * Math.sqrt((v[0] - lc[0]) * (v[0] - lc[0]) + (v[1] - lc[1]) * (v[1] - lc[1]));
             score -= 1000 * Math.sqrt((v[0] - oc[0]) * (v[0] - oc[0]) + (v[1] - oc[1]) * (v[1] - oc[1]));
             if (terr[j] != city) score -= 3000;
             for (var k = 0; k < cities.length; k++) {
-                const u = h.mesh.vxs[cities[k]];
+                const u = h.mesh.vertices[cities[k]];
                 if (Math.abs(v[0] - u[0]) < sx &&
                     Math.abs(v[1] - sy/2 - u[1]) < sy) {
                     score -= k < nterrs ? 4000 : 500;
@@ -905,10 +916,10 @@ function drawLabels(svg, render) {
                 }
             }
             if (h[j] <= 0) score -= 500;
-            if (v[0] + sx/2 > 0.5 * h.mesh.extent.width) score -= 50000;
-            if (v[0] - sx/2 < -0.5 * h.mesh.extent.width) score -= 50000;
-            if (v[1] > 0.5 * h.mesh.extent.height) score -= 50000;
-            if (v[1] - sy < -0.5 * h.mesh.extent.height) score -= 50000;
+            if (v[0] + sx/2 > 0.5 * h.mesh.aspectRatio.width) score -= 50000;
+            if (v[0] - sx/2 < -0.5 * h.mesh.aspectRatio.width) score -= 50000;
+            if (v[1] > 0.5 * h.mesh.aspectRatio.height) score -= 50000;
+            if (v[1] - sy < -0.5 * h.mesh.aspectRatio.height) score -= 50000;
             if (score > bestscore) {
                 bestscore = score;
                 best = j;
@@ -916,8 +927,8 @@ function drawLabels(svg, render) {
         }
         reglabels.push({
             text,
-            x: h.mesh.vxs[best][0],
-            y: h.mesh.vxs[best][1],
+            x: h.mesh.vertices[best][0],
+            y: h.mesh.vertices[best][1],
             size:sy,
             width:sx
         });
@@ -955,8 +966,8 @@ export function doMap(svg, params) {
         params
     };
     const width = svg.attr('width');
-    svg.attr('height', width * params.extent.height / params.extent.width);
-    svg.attr('viewBox', `${-1000 * params.extent.width/2} ${-1000 * params.extent.height/2} ${1000 * params.extent.width} ${1000 * params.extent.height}`);
+    svg.attr('height', width * params.aspectRatio.height / params.aspectRatio.width);
+    svg.attr('viewBox', `${-1000 * params.aspectRatio.width/2} ${-1000 * params.aspectRatio.height/2} ${1000 * params.aspectRatio.width} ${1000 * params.aspectRatio.height}`);
     svg.selectAll().remove();
     render.h = params.generator(params);
     placeCities(render);
@@ -964,9 +975,9 @@ export function doMap(svg, params) {
 }
 
 const defaultParams = {
-    extent: defaultExtent,
+    aspectRatio: defaultAspectRatio,
     generator: generateCoast,
-    npts: 16384,
+    numPoints: 16384,
     ncities: 15,
     nterrs: 5,
     fontsizes: {
