@@ -1,9 +1,9 @@
-import Map from './Map';
-import { getRandomNormal } from '.helpers';
+import BaseMap from './BaseMap';
+import { getRandomNormal, defaultParams } from './helpers';
 
-export default class CoastalMap extends Map {
-    constructor(aspectRatio = defaultAspectRatio) {
-        super(aspectRatio);
+export default class CoastalMap extends BaseMap {
+    constructor(params = defaultParams) {
+        super(params);
     }
 
     generateBasicShape() {
@@ -13,7 +13,9 @@ export default class CoastalMap extends Map {
     generateInitialSlope() {
         const [xVector, yVector] = getRandomNormal();
         const scale = 4;
-        [scale * rnorm(), scale * rnorm()];
-        return this.mesh.map(vertex => vertex[0] * xVector * scale + vertex[1] * yVector * scale);
+
+        this.mesh.map('heights', (height, index) => (
+            this.mesh.vertices[index][0] * xVector * scale + this.mesh.vertices[index][1] * yVector * scale
+        ));
     }
 }

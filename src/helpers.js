@@ -5,8 +5,20 @@ export const defaultAspectRatio = {
     height: 1
 };
 
-export function runif(lo, hi) {
-    return lo + Math.random() * (hi - lo);
+export const defaultParams = {
+    aspectRatio: defaultAspectRatio,
+    numPoints: 16384,
+    ncities: 15,
+    nterrs: 5,
+    fontsizes: {
+        region: 40,
+        city: 25,
+        town: 20
+    }
+};
+
+export function getRandomNumber(low, high) {
+    return low + Math.random() * (high - low);
 }
 
 export function voronoi(pts, aspectRatio = defaultAspectRatio) {
@@ -20,8 +32,8 @@ export function getRandomNormal() {
     let yVector;
     let hypotenuseSquared = 2.0;
     while (hypotenuseSquared >= 1) {
-        xVector = runif(-1, 1);
-        yVector = runif(-1, 1);
+        xVector = getRandomNumber(-1, 1);
+        yVector = getRandomNumber(-1, 1);
         hypotenuseSquared = xVector * xVector + yVector * yVector;
     }
     const zVector = Math.sqrt(-2 * Math.log(hypotenuseSquared) / hypotenuseSquared);

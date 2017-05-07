@@ -6,7 +6,7 @@ import commonjs from 'rollup-plugin-commonjs';
 export default {
   entry: 'src/main.js',
   dest: 'index.js',
-  format: 'iife',
+  format: 'umd',
   moduleName: 'terrain',
   plugins: [
     babel(),
