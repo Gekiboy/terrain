@@ -1,11 +1,14 @@
 import * as d3 from 'd3';
-import { getRandomNumber } from './helpers';
+import { defaultParams, getRandomNumber } from './helpers';
 import { X_POS, Y_POS } from './constants';
 import Mesh from './Mesh';
 
 export default class BaseMap {
-    constructor(params) {
-        this.params = params;
+    constructor(params = {}) {
+        this.params = {
+            ...defaultParams,
+            ...params
+        };
     }
 
     generate() {
@@ -14,37 +17,11 @@ export default class BaseMap {
     }
 
     generateMesh(viewArea) {
-        viewArea || (viewArea = this.getViewArea());
-        const points = this.generatePoints(viewArea);
-
-        this.mesh = new Mesh(points, viewArea);
+        this.mesh = new Mesh(this.params.numPoints, this.params.aspectRatio);
     }
 
     generateBasicShape() {
         // Extend
-    }
-
-    generatePoints(viewArea) {
-        const {left, right, top, bottom} = viewArea;
-        let points = [];
-
-        // Generate a set of random points
-        for (let i = 0; i < this.params.numPoints; i++) {
-            points.push([getRandomNumber(left, right), getRandomNumber(bottom, top)]);
-        }
-        // Sort them based on their X position (why?)
-        points = points.sort((a, b) => a[X_POS] - b[X_POS]);
-        // Find the center of the Voronoi polygons and use those to reduce clumping of points
-        const voronoi = d3.voronoi().extent([[left, bottom], [right, top]])(points);
-        return voronoi.polygons().map(voronoiPolygon => {
-            let x = 0;
-            let y = 0;
-            for (let i = 0; i < voronoiPolygon.length; i++) {
-                x += voronoiPolygon[i][X_POS];
-                y += voronoiPolygon[i][Y_POS];
-            }
-            return [x / voronoiPolygon.length, y/voronoiPolygon.length];
-        });
     }
 
     getViewArea() {
@@ -73,19 +50,31 @@ export default class BaseMap {
         svg.setAttribute('viewBox', viewBox.join(' '));
         svg = d3.select(svg);
         // render here
-        // this.visualizePoints(svg);
         this.visualizeVoronoi(svg, -1, 1);
+        // this.visualizePoints(svg);
     }
 
     visualizePoints(svg) {
-        const circle = svg.selectAll('circle').data(this.mesh.vertices);
-        circle.enter()
-            .append('circle');
-        circle.exit().remove();
-        d3.selectAll('circle')
+        const pointCircles = svg.selectAll('circle.points').data(this.mesh.points);
+        pointCircles.enter()
+            .append('circle')
+            .classed('points', true);
+        pointCircles.exit().remove();
+        d3.selectAll('circle.points')
             .attr('cx', d => 1000*d[0])
             .attr('cy', d => 1000*d[1])
-            .attr('r', 100 / Math.sqrt(this.mesh.vertices.length));
+            .attr('r', 100 / Math.sqrt(this.mesh.points.length));
+
+        const vertexCircles = svg.selectAll('circle.vertices').data(this.mesh.triangleCenters);
+        vertexCircles.enter()
+            .append('circle')
+            .classed('vertices', true);
+        vertexCircles.exit().remove();
+        d3.selectAll('circle.vertices')
+            .attr('cx', d => 1000*d[0])
+            .attr('cy', d => 1000*d[1])
+            .attr('r', 100 / Math.sqrt(this.mesh.triangleCenters.length))
+            .attr('fill', 'red');
     }
 
     visualizeVoronoi(svg, low, high) {
@@ -97,14 +86,14 @@ export default class BaseMap {
         svg.selectAll('path.field').style('fill', (d, i) => d3.interpolateViridis(mappedHeights[i]));
     }
 
-    drawPaths(svg, cls, paths) {
-        var paths = svg.selectAll(`path.${cls}`).data(paths)
+    drawPaths(svg, className, paths) {
+        paths = svg.selectAll(`path.${className}`).data(paths);
         paths.enter()
-                .append('path')
-                .classed(cls, true)
+            .append('path')
+            .classed(className, true);
         paths.exit()
-                .remove();
-        svg.selectAll(`path.${cls}`)
+            .remove();
+        svg.selectAll(`path.${className}`)
             .attr('d', this.makeD3Path);
     }
 

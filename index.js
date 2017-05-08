@@ -212,6 +212,26 @@ var max = function (values, valueof) {
   return max;
 };
 
+var mean = function (values, valueof) {
+  var n = values.length,
+      m = n,
+      i = -1,
+      value,
+      sum = 0;
+
+  if (valueof == null) {
+    while (++i < n) {
+      if (!isNaN(value = number(values[i]))) sum += value;else --m;
+    }
+  } else {
+    while (++i < n) {
+      if (!isNaN(value = number(valueof(values[i], i, values)))) sum += value;else --m;
+    }
+  }
+
+  if (m) return sum / m;
+};
+
 var merge = function (arrays) {
   var n = arrays.length,
       m,
@@ -1825,6 +1845,20 @@ var createClass = function () {
 
 
 
+
+var _extends = Object.assign || function (target) {
+  for (var i = 1; i < arguments.length; i++) {
+    var source = arguments[i];
+
+    for (var key in source) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        target[key] = source[key];
+      }
+    }
+  }
+
+  return target;
+};
 
 
 
@@ -7969,7 +8003,7 @@ var defaultAspectRatio = {
 
 var defaultParams = {
     aspectRatio: defaultAspectRatio,
-    numPoints: 16384,
+    numPoints: 4096, // Will generate a mesh with ~5x the number of triangles
     ncities: 15,
     nterrs: 5,
     fontsizes: {
@@ -8003,70 +8037,151 @@ var X_POS = 0;
 var Y_POS = 1;
 
 var Mesh = function () {
-    function Mesh(points, viewArea) {
-        var _this = this;
-
+    //
+    // Index of which points are considered adjacent to another
+    function Mesh(numPoints, aspectRatio) {
         classCallCheck(this, Mesh);
-        var left = viewArea.left,
-            right = viewArea.right,
-            top = viewArea.top,
-            bottom = viewArea.bottom;
-
-        var voronoi$$1 = voronoi().extent([[left, bottom], [right, top]])(points);
-        // Temporary to support old logic
-        this.aspectRatio = {
-            width: right - left,
-            height: top - bottom
-        };
-
-        this.vertices = [];
-        this.verticeIndex = {};
+        this.viewArea = {};
         this.adjacencyIndex = [];
         this.edges = [];
         this.triangles = [];
+        this.triangleCenters = [];
         this.heights = [];
 
-        voronoi$$1.edges.forEach(function (voronoiEdge) {
-            if (voronoiEdge == undefined) return;
+        this.viewArea = this.getViewArea(aspectRatio);
+        var points = this.getRandomPoints(numPoints);
+        this.generateTriangles(points);
+    } // List of edges including the triangles they border
 
-            var firstVertice = voronoiEdge[0],
-                secondVertice = voronoiEdge[1],
-                leftSide = voronoiEdge.left,
-                rightSide = voronoiEdge.right;
-
-
-            var firstVerticePosition = _this.addVertice(firstVertice);
-            var secondVerticePosition = _this.addVertice(secondVertice);
-            _this.addAdjacencyReferences(firstVerticePosition, secondVerticePosition);
-            // TODO: Pay attention to how these are used
-            _this.edges.push([firstVerticePosition, secondVerticePosition, leftSide, rightSide]);
-            _this.addTriangleReferences(firstVerticePosition, leftSide);
-            _this.addTriangleReferences(firstVerticePosition, rightSide);
-            _this.addTriangleReferences(secondVerticePosition, leftSide);
-            _this.addTriangleReferences(secondVerticePosition, rightSide);
-        });
-    }
 
     createClass(Mesh, [{
-        key: 'addVertice',
-        value: function addVertice(vertice) {
-            // Only add it if it's new, otherwise just return its position
-            var position = this.verticeIndex[vertice];
-            if (!position) {
-                position = this.vertices.push(vertice) - 1;
-                this.heights.push(0);
-                this.verticeIndex[vertice] = position;
+        key: 'getViewArea',
+        value: function getViewArea(aspectRatio) {
+            var w = aspectRatio.width / 2;
+            var h = aspectRatio.height / 2;
+
+            return {
+                left: -w,
+                right: w,
+                top: h,
+                bottom: -h
+            };
+        }
+    }, {
+        key: 'getRandomPoints',
+        value: function getRandomPoints(numPoints) {
+            var _this = this;
+
+            var _viewArea = this.viewArea,
+                left = _viewArea.left,
+                right = _viewArea.right,
+                top = _viewArea.top,
+                bottom = _viewArea.bottom;
+
+            // Generate a set of random points
+
+            var points = [];
+            for (var i = 0; i < numPoints; i++) {
+                points.push([getRandomNumber(left, right), getRandomNumber(bottom, top)]);
             }
-            return position;
+            // Generate a voronoi diagram from the points and use the center of each polygon instead to reduce clumping
+            var voronoiDiagram = voronoi().extent([[left, bottom], [right, top]])(points);
+            return voronoiDiagram.polygons().map(function (polygon) {
+                return _this.getMean(polygon);
+            });
+        }
+    }, {
+        key: 'generateTriangles',
+        value: function generateTriangles(points) {
+            var _this2 = this;
+
+            var _viewArea2 = this.viewArea,
+                left = _viewArea2.left,
+                right = _viewArea2.right,
+                top = _viewArea2.top,
+                bottom = _viewArea2.bottom;
+
+            var voronoiDiagram = voronoi().extent([[left, bottom], [right, top]])(points);
+
+            // this.points = points;
+            // Temporary to support old logic
+            this.aspectRatio = {
+                width: right - left,
+                height: top - bottom
+            };
+
+            var triangleLookup = {};
+            voronoiDiagram.edges.forEach(function (voronoiEdge) {
+                if (voronoiEdge == undefined) return;
+
+                var firstVertex = voronoiEdge[0],
+                    secondVertex = voronoiEdge[1],
+                    leftSide = voronoiEdge.left,
+                    rightSide = voronoiEdge.right;
+
+
+                var firstTriangleReference = _this2.addTriangle(leftSide, firstVertex, secondVertex);
+                _this2.checkForEdge(triangleLookup, [leftSide, firstVertex], firstTriangleReference);
+                _this2.checkForEdge(triangleLookup, [leftSide, secondVertex], firstTriangleReference);
+
+                if (rightSide) {
+                    var secondTriangleReference = _this2.addTriangle(rightSide, firstVertex, secondVertex);
+                    _this2.addEdge(firstTriangleReference, secondTriangleReference, firstVertex, secondVertex);
+                    _this2.checkForEdge(triangleLookup, [rightSide, firstVertex], secondTriangleReference);
+                    _this2.checkForEdge(triangleLookup, [rightSide, secondVertex], secondTriangleReference);
+                }
+            });
+        }
+    }, {
+        key: 'addTriangle',
+        value: function addTriangle(firstVertex, secondVertex, thirdVertex) {
+            var triangle = [firstVertex, secondVertex, thirdVertex];
+
+            var reference = this.triangles.push(triangle) - 1;
+            this.triangleCenters.push(this.getMean(triangle));
+            this.heights.push(0);
+
+            return reference;
+        }
+    }, {
+        key: 'getMean',
+        value: function getMean(vertices) {
+            return [mean(vertices.map(function (vertex) {
+                return vertex[X_POS];
+            })), mean(vertices.map(function (vertex) {
+                return vertex[Y_POS];
+            }))];
+        }
+    }, {
+        key: 'checkForEdge',
+        value: function checkForEdge(lookup, _ref, triangleReference) {
+            var _ref2 = slicedToArray(_ref, 2),
+                firstVertex = _ref2[0],
+                secondVertex = _ref2[1];
+
+            // Given an edge of a triangle, check to see if there is a previously created triangle that shares them
+            if (lookup[firstVertex] && lookup[firstVertex][secondVertex]) {
+                this.addEdge(triangleReference, lookup[firstVertex][secondVertex], firstVertex, secondVertex);
+            } else {
+                lookup[firstVertex] || (lookup[firstVertex] = {});
+                lookup[firstVertex][secondVertex] = triangleReference;
+            }
+        }
+    }, {
+        key: 'addEdge',
+        value: function addEdge(firstTriangleReference, secondTriangleReference, firstVertex, secondVertex) {
+            // Track the edge between the triangles and that they are adjacent
+            this.edges.push([firstTriangleReference, secondTriangleReference, firstVertex, secondVertex]);
+            this.addAdjacencyReferences(firstTriangleReference, secondTriangleReference);
         }
     }, {
         key: 'addAdjacencyReferences',
-        value: function addAdjacencyReferences(firstPosition, secondPosition) {
-            // Track which positions of adjacent vertices
-            this.adjacencyIndex[firstPosition] || (this.adjacencyIndex[firstPosition] = []);
-            this.adjacencyIndex[secondPosition] || (this.adjacencyIndex[secondPosition] = []);
-            this.adjacencyIndex[firstPosition].push(secondPosition);
-            this.adjacencyIndex[secondPosition].push(firstPosition);
+        value: function addAdjacencyReferences(firstTriangleReference, secondTriangleReference) {
+            // Track which triangles are adjacent to each other
+            this.adjacencyIndex[firstTriangleReference] || (this.adjacencyIndex[firstTriangleReference] = []);
+            this.adjacencyIndex[secondTriangleReference] || (this.adjacencyIndex[secondTriangleReference] = []);
+            this.adjacencyIndex[firstTriangleReference].push(secondTriangleReference);
+            this.adjacencyIndex[secondTriangleReference].push(firstTriangleReference);
         }
     }, {
         key: 'addTriangleReferences',
@@ -8074,9 +8189,6 @@ var Mesh = function () {
             this.triangles[position] || (this.triangles[position] = []);
             side && !this.triangles[position].includes(side) && this.triangles[position].push(side);
         }
-
-        // Temporary to support old functionality
-
     }, {
         key: 'map',
         value: function map$$1(property, f) {
@@ -8087,10 +8199,11 @@ var Mesh = function () {
 }();
 
 var BaseMap = function () {
-    function BaseMap(params) {
+    function BaseMap() {
+        var params = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
         classCallCheck(this, BaseMap);
 
-        this.params = params;
+        this.params = _extends({}, defaultParams, params);
     }
 
     createClass(BaseMap, [{
@@ -8102,45 +8215,12 @@ var BaseMap = function () {
     }, {
         key: 'generateMesh',
         value: function generateMesh(viewArea) {
-            viewArea || (viewArea = this.getViewArea());
-            var points = this.generatePoints(viewArea);
-
-            this.mesh = new Mesh(points, viewArea);
+            this.mesh = new Mesh(this.params.numPoints, this.params.aspectRatio);
         }
     }, {
         key: 'generateBasicShape',
         value: function generateBasicShape() {
             // Extend
-        }
-    }, {
-        key: 'generatePoints',
-        value: function generatePoints(viewArea) {
-            var left = viewArea.left,
-                right = viewArea.right,
-                top = viewArea.top,
-                bottom = viewArea.bottom;
-
-            var points = [];
-
-            // Generate a set of random points
-            for (var i = 0; i < this.params.numPoints; i++) {
-                points.push([getRandomNumber(left, right), getRandomNumber(bottom, top)]);
-            }
-            // Sort them based on their X position (why?)
-            points = points.sort(function (a, b) {
-                return a[X_POS] - b[X_POS];
-            });
-            // Find the center of the Voronoi polygons and use those to reduce clumping of points
-            var voronoi$$1 = voronoi().extent([[left, bottom], [right, top]])(points);
-            return voronoi$$1.polygons().map(function (voronoiPolygon) {
-                var x = 0;
-                var y = 0;
-                for (var _i = 0; _i < voronoiPolygon.length; _i++) {
-                    x += voronoiPolygon[_i][X_POS];
-                    y += voronoiPolygon[_i][Y_POS];
-                }
-                return [x / voronoiPolygon.length, y / voronoiPolygon.length];
-            });
         }
     }, {
         key: 'getViewArea',
@@ -8170,20 +8250,29 @@ var BaseMap = function () {
             svg.setAttribute('viewBox', viewBox.join(' '));
             svg = select(svg);
             // render here
-            // this.visualizePoints(svg);
             this.visualizeVoronoi(svg, -1, 1);
+            // this.visualizePoints(svg);
         }
     }, {
         key: 'visualizePoints',
         value: function visualizePoints(svg) {
-            var circle = svg.selectAll('circle').data(this.mesh.vertices);
-            circle.enter().append('circle');
-            circle.exit().remove();
-            selectAll('circle').attr('cx', function (d) {
+            var pointCircles = svg.selectAll('circle.points').data(this.mesh.points);
+            pointCircles.enter().append('circle').classed('points', true);
+            pointCircles.exit().remove();
+            selectAll('circle.points').attr('cx', function (d) {
                 return 1000 * d[0];
             }).attr('cy', function (d) {
                 return 1000 * d[1];
-            }).attr('r', 100 / Math.sqrt(this.mesh.vertices.length));
+            }).attr('r', 100 / Math.sqrt(this.mesh.points.length));
+
+            var vertexCircles = svg.selectAll('circle.vertices').data(this.mesh.triangleCenters);
+            vertexCircles.enter().append('circle').classed('vertices', true);
+            vertexCircles.exit().remove();
+            selectAll('circle.vertices').attr('cx', function (d) {
+                return 1000 * d[0];
+            }).attr('cy', function (d) {
+                return 1000 * d[1];
+            }).attr('r', 100 / Math.sqrt(this.mesh.triangleCenters.length)).attr('fill', 'red');
         }
     }, {
         key: 'visualizeVoronoi',
@@ -8201,11 +8290,11 @@ var BaseMap = function () {
         }
     }, {
         key: 'drawPaths',
-        value: function drawPaths(svg, cls, paths) {
-            var paths = svg.selectAll('path.' + cls).data(paths);
-            paths.enter().append('path').classed(cls, true);
+        value: function drawPaths(svg, className, paths) {
+            paths = svg.selectAll('path.' + className).data(paths);
+            paths.enter().append('path').classed(className, true);
             paths.exit().remove();
-            svg.selectAll('path.' + cls).attr('d', this.makeD3Path);
+            svg.selectAll('path.' + className).attr('d', this.makeD3Path);
         }
     }, {
         key: 'makeD3Path',
@@ -8224,8 +8313,7 @@ var BaseMap = function () {
 var CoastalMap = function (_BaseMap) {
     inherits(CoastalMap, _BaseMap);
 
-    function CoastalMap() {
-        var params = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : defaultParams;
+    function CoastalMap(params) {
         classCallCheck(this, CoastalMap);
         return possibleConstructorReturn(this, (CoastalMap.__proto__ || Object.getPrototypeOf(CoastalMap)).call(this, params));
     }
@@ -8248,7 +8336,7 @@ var CoastalMap = function (_BaseMap) {
             var scale = 4;
 
             this.mesh.map('heights', function (height, index) {
-                return _this2.mesh.vertices[index][0] * xVector * scale + _this2.mesh.vertices[index][1] * yVector * scale;
+                return _this2.mesh.triangleCenters[index][0] * xVector * scale + _this2.mesh.triangleCenters[index][1] * yVector * scale;
             });
         }
     }]);

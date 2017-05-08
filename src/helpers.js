@@ -1,13 +1,13 @@
 import * as d3 from 'd3';
 
-export const defaultAspectRatio = {
+const defaultAspectRatio = {
     width: 1,
     height: 1
 };
 
 export const defaultParams = {
     aspectRatio: defaultAspectRatio,
-    numPoints: 16384,
+    numPoints: 4096, // Will generate a mesh with ~5x the number of triangles
     ncities: 15,
     nterrs: 5,
     fontsizes: {
